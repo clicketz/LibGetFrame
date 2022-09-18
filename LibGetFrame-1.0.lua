@@ -28,6 +28,7 @@ local defaultFramePriorities = {
   "^HealBot", -- healbot
   "^GridLayout", -- grid
   "^Grid2Layout", -- grid2
+  "^NugRaid%d+UnitButton%d+", -- Aptechka
   "^PlexusLayout", -- plexus
   "^ElvUF_Raid%d*Group", -- elv
   "^oUF_bdGrid", -- bdgrid
