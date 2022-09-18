@@ -1,5 +1,5 @@
 local MAJOR_VERSION = "LibGetFrame-1.0"
-local MINOR_VERSION = 48
+local MINOR_VERSION = 41
 if not LibStub then
   error(MAJOR_VERSION .. " requires LibStub.")
 end
@@ -13,7 +13,7 @@ local callbacks = lib.callbacks
 
 local GetPlayerInfoByGUID, UnitExists, IsAddOnLoaded, C_Timer, UnitIsUnit, SecureButton_GetUnit =
   GetPlayerInfoByGUID, UnitExists, IsAddOnLoaded, C_Timer, UnitIsUnit, SecureButton_GetUnit
-local tinsert, CopyTable, wipe, GetActionInfo = tinsert, CopyTable, wipe, GetActionInfo
+local tinsert, CopyTable, wipe = tinsert, CopyTable, wipe
 
 local maxDepth = 50
 
@@ -28,7 +28,6 @@ local defaultFramePriorities = {
   "^HealBot", -- healbot
   "^GridLayout", -- grid
   "^Grid2Layout", -- grid2
-  "^NugRaid%d+UnitButton%d+", -- Aptechka
   "^PlexusLayout", -- plexus
   "^ElvUF_Raid%d*Group", -- elv
   "^oUF_bdGrid", -- bdgrid
@@ -123,23 +122,15 @@ local defaultRaidFrames = {
   "^CompactRaid",
 }
 
-local GetFramesCache = {}     -- frame adress => frame name, GetUnitFrames only use this table
-local GetFramesCacheTemp = {} -- temp table while scanning
-local FrameToUnitFresh = {}   -- frame adress => unit, all frames with a unit found in a scan
-local FrameToUnit = {}        -- frame adress => unit, from last scan, to make differential with FrameToUnitFresh
-local UpdatedFrames = {}      -- frame adress => unit, frames found this scan with a unit different from previous scan
-
-local ActionButtons = {}      -- action frame => slot
-local ActionButtonsTemp = {}  -- temp table while scanning
-local ActionButtonUpdate = false
-local SlotToFrame = {}
-local SlotToAction = {}
+local GetFramesCache = {}
+local FrameToUnitFresh = {}
+local FrameToUnit = {}
+local UpdatedFrames = {}
 
 local function ScanFrames(depth, frame, ...)
   if not frame then
     return
   end
-  coroutine.yield()
   if depth < maxDepth and frame.IsForbidden and not frame:IsForbidden() then
     local frameType = frame:GetObjectType()
     if frameType == "Frame" or frameType == "Button" then
@@ -149,115 +140,46 @@ local function ScanFrames(depth, frame, ...)
       local unit = SecureButton_GetUnit(frame)
       local name = frame:GetName()
       if unit and frame:IsVisible() and name then
-        GetFramesCacheTemp[frame] = name
+        GetFramesCache[frame] = name
         if unit ~= FrameToUnit[frame] then
           FrameToUnit[frame] = unit
           UpdatedFrames[frame] = unit
         end
         FrameToUnitFresh[frame] = unit
       end
-    elseif frameType == "CheckButton" and frame.action then
-      local action = frame.action
-      local slotType, slotId, slotSubType = GetActionInfo(action)
-      ActionButtonsTemp[frame] = frame.action
-      --  check if a frame is not assigned to same action
-      if ActionButtons[frame] ~= frame.action then
-        ActionButtonUpdate = true
-      end
-      -- check if action have same type/id/subType
-      if not SlotToAction[action] then
-        SlotToAction[action] = { type = slotType, id = slotId, subType = slotSubType }
-        ActionButtonUpdate = true
-      else
-        local slotData = SlotToAction[action]
-        if slotData.type ~= slotType or slotData.id ~= slotId or slotData.subType ~= slotSubType then
-          slotData.type = slotType
-          slotData.id = slotId
-          slotData.subType = slotSubType
-          ActionButtonUpdate = true
-        end
-      end
     end
   end
   ScanFrames(depth, ...)
 end
 
-local status = "ready"
-local co
-local coroutineFrame = CreateFrame("Frame")
-coroutineFrame:Hide()
+local wait = false
 
 local function doScanForUnitFrames()
-  if not coroutineFrame:IsShown() then
-    wipe(UpdatedFrames)
-    wipe(GetFramesCacheTemp)
-    wipe(FrameToUnitFresh)
-    wipe(ActionButtonsTemp)
-    ActionButtonUpdate = false
-    status = "scanning"
-    co = coroutine.create(ScanFrames)
-    coroutineFrame:Show()
+  wait = false
+  wipe(UpdatedFrames)
+  wipe(GetFramesCache)
+  wipe(FrameToUnitFresh)
+  ScanFrames(0, UIParent)
+  callbacks:Fire("GETFRAME_REFRESH")
+  for frame, unit in pairs(UpdatedFrames) do
+    callbacks:Fire("FRAME_UNIT_UPDATE", frame, unit)
+  end
+  for frame, unit in pairs(FrameToUnit) do
+    if FrameToUnitFresh[frame] ~= unit then
+      callbacks:Fire("FRAME_UNIT_REMOVED", frame, unit)
+      FrameToUnit[frame] = nil
+    end
   end
 end
-
-coroutineFrame:SetScript("OnUpdate", function()
-  local start = debugprofilestop()
-  while debugprofilestop() - start < 16 and coroutine.status(co) ~= "dead" do
-    coroutine.resume(co, 0, UIParent)
-  end
-  if coroutine.status(co) == "dead" then
-    local tmp = GetFramesCache
-    GetFramesCache = GetFramesCacheTemp
-    GetFramesCacheTemp = tmp
-    wipe(GetFramesCacheTemp)
-    tmp = ActionButtons
-    ActionButtons = ActionButtonsTemp
-    ActionButtonsTemp = tmp
-    wipe(ActionButtonsTemp)
-    callbacks:Fire("GETFRAME_REFRESH")
-    for frame, unit in pairs(UpdatedFrames) do
-      callbacks:Fire("FRAME_UNIT_UPDATE", frame, unit)
-    end
-    for frame, unit in pairs(FrameToUnit) do
-      if FrameToUnitFresh[frame] ~= unit then
-        callbacks:Fire("FRAME_UNIT_REMOVED", frame, unit)
-        FrameToUnit[frame] = nil
-      end
-    end
-    if ActionButtonUpdate then
-      wipe(SlotToFrame)
-      for frame, slot in pairs(ActionButtons) do
-        SlotToFrame[slot] = SlotToFrame[slot] or {}
-        tinsert(SlotToFrame[slot], frame)
-      end
-      callbacks:Fire("ACTIONBAR_SLOT_CHANGED")
-    end
-    coroutineFrame:Hide()
-    if status == "scan_queued" then
-      doScanForUnitFrames()
-    else
-      status = "ready"
-    end
-  end
-end)
-
 local function ScanForUnitFrames(noDelay)
-  if status == "ready" then
-    if noDelay then
+  if noDelay then
+    doScanForUnitFrames()
+  elseif not wait then
+    wait = true
+    C_Timer.After(1, function()
       doScanForUnitFrames()
-    else
-      status = "scan_delay"
-      C_Timer.After(1, function()
-        doScanForUnitFrames()
-      end)
-    end
-  elseif status == "scanning" then
-    status = "scan_queued"
+    end)
   end
-end
-
-function lib.ScanForUnitFrames()
-  ScanForUnitFrames(true)
 end
 
 local function isFrameFiltered(name, ignoredFrames)
@@ -354,7 +276,6 @@ local function Init(noDelay)
   GetFramesCacheListener:RegisterEvent("PLAYER_REGEN_ENABLED")
   GetFramesCacheListener:RegisterEvent("PLAYER_ENTERING_WORLD")
   GetFramesCacheListener:RegisterEvent("GROUP_ROSTER_UPDATE")
-  GetFramesCacheListener:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
   GetFramesCacheListener:RegisterEvent("UNIT_PET")
   GetFramesCacheListener:RegisterEvent("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
   GetFramesCacheListener:SetScript("OnEvent", function(event, unit)
@@ -380,6 +301,23 @@ local function Init(noDelay)
   end)
   ScanForUnitFrames(noDelay)
 end
+
+--[[
+local trackingPets = false
+-- TrackPets register UNIT_PET, can be useful for tracking pets changes while in encounter, but it can have a bad impact on FPS
+function lib.TrackPets(test)
+  if type(GetFramesCacheListener) ~= "table" then
+    Init(true)
+  end
+  if test and not trackingPets then
+    GetFramesCacheListener:RegisterEvent("UNIT_PET")
+    trackingPets = true
+  elseif not test and trackingPets then
+    GetFramesCacheListener:UnregisterEvent("UNIT_PET")
+    trackingPets = false
+  end
+end
+]]
 
 function lib.GetUnitFrame(target, opt)
   if type(GetFramesCacheListener) ~= "table" then
@@ -489,51 +427,4 @@ function lib.GetUnitNameplate(unit)
       return nameplate
     end
   end
-end
-
----Return a list of action buttons for a slotId.
----@param slotId number
----@return table<CheckButton>
-function lib.GetActionButtonsBySlot(slotId)
-  return SlotToFrame[slotId]
-end
-
----Return a list of action buttons for a spell/item/equipement set.
----Check documentation of GetActionInfo for more information.
----@param id number|string
----@param actionType string
----@param subType? number|string
----@return table<CheckButton>
-function lib.GetActionButtonsById(id, actionType, subType)
-  if type(GetFramesCacheListener) ~= "table" then
-    Init(true)
-  end
-  local frames = {}
-  if actionType == "spell" and type(id) == "number" then
-    if C_ActionBar.HasSpellActionButtons(id) then
-      local slots = C_ActionBar.FindSpellActionButtons(id)
-      for _, slot in ipairs(slots) do
-        if SlotToFrame[slot] then
-          for _, frame in ipairs(SlotToFrame[slot]) do
-            tinsert(frames, frame)
-          end
-        end
-      end
-    end
-  else
-    local slotType, slotId, slotSubType
-    for i = 1, 120 do
-      slotType, slotId, slotSubType = GetActionInfo(i)
-      if id == slotId
-      and slotType == actionType
-      and (subType == nil or subType == slotSubType)
-      and SlotToFrame[i]
-      then
-        for _, frame in ipairs(SlotToFrame[i]) do
-          tinsert(frames, frame)
-        end
-      end
-    end
-  end
-  return frames
 end
