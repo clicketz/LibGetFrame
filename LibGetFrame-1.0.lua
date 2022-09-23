@@ -277,34 +277,36 @@ local unitPetState = {} -- track if unit's pet exists
 
 local GetFramesCacheListener
 local function Init(noDelay)
-  GetFramesCacheListener = CreateFrame("Frame")
-  GetFramesCacheListener:RegisterEvent("PLAYER_REGEN_DISABLED")
-  GetFramesCacheListener:RegisterEvent("PLAYER_REGEN_ENABLED")
-  GetFramesCacheListener:RegisterEvent("PLAYER_ENTERING_WORLD")
-  GetFramesCacheListener:RegisterEvent("GROUP_ROSTER_UPDATE")
-  GetFramesCacheListener:RegisterEvent("UNIT_PET")
-  GetFramesCacheListener:RegisterEvent("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
-  GetFramesCacheListener:SetScript("OnEvent", function(event, unit)
-    if event == "GROUP_ROSTER_UPDATE" then
-      wipe(unitPetState)
-      for member in IterateGroupMembers() do
-        unitPetState[member] = UnitExists(member .. "pet") and true or nil
+  if not GetFramesCacheListener then
+    GetFramesCacheListener = CreateFrame("Frame")
+    GetFramesCacheListener:RegisterEvent("PLAYER_REGEN_DISABLED")
+    GetFramesCacheListener:RegisterEvent("PLAYER_REGEN_ENABLED")
+    GetFramesCacheListener:RegisterEvent("PLAYER_ENTERING_WORLD")
+    GetFramesCacheListener:RegisterEvent("GROUP_ROSTER_UPDATE")
+    GetFramesCacheListener:RegisterEvent("UNIT_PET")
+    GetFramesCacheListener:RegisterEvent("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
+    GetFramesCacheListener:SetScript("OnEvent", function(event, unit)
+      if event == "GROUP_ROSTER_UPDATE" then
+        wipe(unitPetState)
+        for member in IterateGroupMembers() do
+          unitPetState[member] = UnitExists(member .. "pet") and true or nil
+        end
       end
-    end
-    if event == "UNIT_PET" then
-      if not (UnitIsUnit("player", unit) or UnitInParty(unit) or UnitInRaid(unit)) then
-        return
+      if event == "UNIT_PET" then
+        if not (UnitIsUnit("player", unit) or UnitInParty(unit) or UnitInRaid(unit)) then
+          return
+        end
+        -- skip if unit's pet existance has not changed
+        local exists = UnitExists(unit .. "pet") and true or nil
+        if unitPetState[unit] == exists then
+          return
+        else
+          unitPetState[unit] = exists
+        end
       end
-      -- skip if unit's pet existance has not changed
-      local exists = UnitExists(unit .. "pet") and true or nil
-      if unitPetState[unit] == exists then
-        return
-      else
-        unitPetState[unit] = exists
-      end
-    end
-    ScanForUnitFrames(false)
-  end)
+      ScanForUnitFrames(false)
+    end)
+  end
   ScanForUnitFrames(noDelay)
 end
 
