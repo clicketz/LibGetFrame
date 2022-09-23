@@ -172,6 +172,7 @@ local function doScanForUnitFrames()
     end
   end
 end
+
 local function ScanForUnitFrames(noDelay)
   if noDelay then
     doScanForUnitFrames()
@@ -305,6 +306,10 @@ local function Init(noDelay)
     ScanForUnitFrames(false)
   end)
   ScanForUnitFrames(noDelay)
+end
+
+function lib.Init()
+  Init(true)
 end
 
 --[[
