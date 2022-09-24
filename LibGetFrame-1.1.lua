@@ -1,5 +1,5 @@
-local MAJOR_VERSION = "LibGetFrame-1.0"
-local MINOR_VERSION = 41.3
+local MAJOR_VERSION = "LibGetFrame-1.1"
+local MINOR_VERSION = 3
 if not LibStub then
   error(MAJOR_VERSION .. " requires LibStub.")
 end
