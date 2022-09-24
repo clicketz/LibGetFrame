@@ -1,4 +1,4 @@
-## Interface: 90105
+## Interface: 90207
 ## Title: Lib: GetFrame
 ## Notes: Get unit frame for a unit
 ## Author: Buds
@@ -10,4 +10,4 @@
 
 LibStub\LibStub.lua
 
-LibGetFrame-1.0.xml
+LibGetFrame-1.1.xml
